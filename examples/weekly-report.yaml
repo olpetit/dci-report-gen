@@ -1,0 +1,31 @@
+report:
+  title: "Weekly CI Report"
+  author: "DCI Team"
+  date: auto
+
+vars:
+  date_start: "2025-06-01"
+
+sections:
+  - name: "Recent OCP Daily Jobs"
+    source:
+      type: dci
+      query: "(((tags in ['daily']) and (components.type='ocp')) and (created_at>='{{date_start}}'))"
+      fields: ["id", "name", "status", "created_at", "duration"]
+      limit: 20
+      sort: "-created_at"
+    render:
+      style: table
+      columns:
+        - header: "Job ID"
+          field: "id"
+        - header: "Name"
+          field: "name"
+        - header: "Status"
+          field: "status"
+        - header: "Date"
+          field: "created_at"
+          format: "date"
+        - header: "Duration"
+          field: "duration"
+          format: "duration"

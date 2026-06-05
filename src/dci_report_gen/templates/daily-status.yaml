@@ -1,0 +1,35 @@
+description: "Daily CI job status report"
+
+params:
+  date:
+    required: true
+  limit:
+    default: 50
+
+report:
+  title: "Daily CI Status — {{date}}"
+  author: "DCI Team"
+
+sections:
+  - name: "Daily OCP Jobs (since {{date}})"
+    source:
+      type: dci
+      query: "(((tags in ['daily']) and (components.type='ocp')) and (created_at>='{{date}}'))"
+      fields: ["id", "name", "status", "created_at", "duration"]
+      limit: "{{limit}}"
+      sort: "-created_at"
+    render:
+      style: table
+      columns:
+        - header: "Job ID"
+          field: "id"
+        - header: "Name"
+          field: "name"
+        - header: "Status"
+          field: "status"
+        - header: "Date"
+          field: "created_at"
+          format: "date"
+        - header: "Duration"
+          field: "duration"
+          format: "duration"

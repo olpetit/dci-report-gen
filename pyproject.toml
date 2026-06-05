@@ -1,0 +1,36 @@
+[project]
+name = "dci-report-gen"
+version = "0.1.0"
+description = "Report generation engine for DCI, Jira, and GitHub data"
+requires-python = ">=3.10"
+dependencies = [
+    "PyYAML>=6.0",
+    "reportlab>=4.0",
+    "dciclient>=3.0",
+    "jira>=3.5",
+    "PyGithub>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+dci-report-gen = "dci_report_gen.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dci_report_gen"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+src = ["src"]

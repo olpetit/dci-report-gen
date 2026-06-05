@@ -1,0 +1,25 @@
+report:
+  title: "Test Report"
+  author: "Test Author"
+  date: "2024-06-01"
+
+vars:
+  date_start: "2024-06-01"
+
+sections:
+  - name: "OCP Jobs"
+    source:
+      type: dci
+      query: "(((tags in ['daily']) and (components.type='ocp')) and (created_at>='{{date_start}}'))"
+      fields: ["id", "status", "created_at"]
+      limit: 10
+    render:
+      style: table
+      columns:
+        - header: "Job ID"
+          field: "id"
+        - header: "Status"
+          field: "status"
+        - header: "Date"
+          field: "created_at"
+          format: "date"

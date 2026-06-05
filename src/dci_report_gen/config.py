@@ -1,0 +1,181 @@
+import re
+from dataclasses import dataclass, field
+from datetime import date
+
+import yaml
+
+
+@dataclass
+class ColumnConfig:
+    header: str
+    field: str
+    format: str | None = None
+
+
+@dataclass
+class RenderConfig:
+    style: str = "table"
+    columns: list[ColumnConfig] | None = None
+    title: str | None = None
+
+
+@dataclass
+class SourceConfig:
+    type: str
+    query: str | None = None
+    fields: list[str] | None = None
+    limit: int = 100
+    sort: str = "-created_at"
+    aggs: dict | None = None
+    jql: str | None = None
+    max_results: int = 50
+    repo: str | None = None
+
+
+@dataclass
+class SectionConfig:
+    name: str
+    source: SourceConfig
+    render: RenderConfig
+
+
+@dataclass
+class TemplateRef:
+    type: str
+    params: dict = field(default_factory=dict)
+
+
+@dataclass
+class ReportConfig:
+    title: str
+    sections: list[SectionConfig]
+    author: str | None = None
+    date: str = "auto"
+    vars: dict[str, str] = field(default_factory=dict)
+    template: TemplateRef | None = None
+
+
+def _substitute_vars(text: str, vars: dict[str, str]) -> str:
+    def replacer(match):
+        key = match.group(1)
+        if key not in vars:
+            raise ValueError(f"Undefined variable: {{{{{key}}}}}")
+        return vars[key]
+
+    return re.sub(r"\{\{(\w+)\}\}", replacer, text)
+
+
+def _apply_vars_to_source(source: SourceConfig, vars: dict[str, str]) -> None:
+    if source.query:
+        source.query = _substitute_vars(source.query, vars)
+    if source.jql:
+        source.jql = _substitute_vars(source.jql, vars)
+
+
+def _parse_columns(raw: list[dict]) -> list[ColumnConfig]:
+    return [
+        ColumnConfig(
+            header=c["header"],
+            field=c["field"],
+            format=c.get("format"),
+        )
+        for c in raw
+    ]
+
+
+def _parse_render(raw: dict) -> RenderConfig:
+    columns = None
+    if "columns" in raw:
+        columns = _parse_columns(raw["columns"])
+    return RenderConfig(
+        style=raw.get("style", "table"),
+        columns=columns,
+        title=raw.get("title"),
+    )
+
+
+def _parse_source(raw: dict) -> SourceConfig:
+    return SourceConfig(
+        type=raw["type"],
+        query=raw.get("query"),
+        fields=raw.get("fields"),
+        limit=int(raw.get("limit", 100)),
+        sort=raw.get("sort", "-created_at"),
+        aggs=raw.get("aggs"),
+        jql=raw.get("jql"),
+        max_results=int(raw.get("max_results", 50)),
+        repo=raw.get("repo"),
+    )
+
+
+def _parse_sections(raw: list[dict]) -> list[SectionConfig]:
+    return [
+        SectionConfig(
+            name=s["name"],
+            source=_parse_source(s["source"]),
+            render=_parse_render(s["render"]),
+        )
+        for s in raw
+    ]
+
+
+def load_config(
+    path: str, var_overrides: dict[str, str] | None = None
+) -> ReportConfig:
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+
+    report = raw.get("report", {})
+    title = report.get("title", "Untitled Report")
+    author = report.get("author")
+    report_date = report.get("date", "auto")
+    if report_date == "auto":
+        report_date = date.today().isoformat()
+
+    vars = raw.get("vars", {})
+    if var_overrides:
+        vars.update(var_overrides)
+
+    template = None
+    if "template" in raw:
+        t = raw["template"]
+        template = TemplateRef(type=t["type"], params=t.get("params", {}))
+
+    if template:
+        from dci_report_gen.templates.registry import expand_template
+
+        tmpl_raw, tmpl_vars = expand_template(template.type, template.params)
+        tmpl_vars.update(vars)
+        vars = tmpl_vars
+
+        tmpl_report = tmpl_raw.get("report", {})
+        if title == "Untitled Report" and "title" in tmpl_report:
+            title = tmpl_report["title"]
+        if author is None and "author" in tmpl_report:
+            author = tmpl_report["author"]
+
+        template_sections = []
+        if "sections" in tmpl_raw:
+            template_sections = _parse_sections(tmpl_raw["sections"])
+    else:
+        template_sections = []
+
+    sections = []
+    if "sections" in raw:
+        sections = _parse_sections(raw["sections"])
+
+    all_sections = template_sections + sections
+
+    for section in all_sections:
+        _apply_vars_to_source(section.source, vars)
+        if section.name:
+            section.name = _substitute_vars(section.name, vars)
+
+    return ReportConfig(
+        title=_substitute_vars(title, vars) if "{{" in title else title,
+        author=author,
+        date=report_date,
+        sections=all_sections,
+        vars=vars,
+        template=template,
+    )
