@@ -1,5 +1,5 @@
 template:
   type: daily-status
   params:
-    date: "2025-06-01"
+    date_start: "2025-06-01"
     limit: 10

@@ -53,6 +53,8 @@ class ReportConfig:
     date: str = "auto"
     vars: dict[str, str] = field(default_factory=dict)
     template: TemplateRef | None = None
+    layout: str | None = None
+    data: dict[str, SourceConfig] | None = None
 
 
 def _substitute_vars(text: str, vars: dict[str, str]) -> str:
@@ -136,6 +138,8 @@ def load_config(
     if var_overrides:
         vars.update(var_overrides)
 
+    layout = report.get("layout")
+
     template = None
     if "template" in raw:
         t = raw["template"]
@@ -153,16 +157,29 @@ def load_config(
             title = tmpl_report["title"]
         if author is None and "author" in tmpl_report:
             author = tmpl_report["author"]
+        if layout is None and "layout" in tmpl_report:
+            layout = tmpl_report["layout"]
 
         template_sections = []
         if "sections" in tmpl_raw:
             template_sections = _parse_sections(tmpl_raw["sections"])
+
+        template_data = {}
+        if "data" in tmpl_raw:
+            for name, src_raw in tmpl_raw["data"].items():
+                template_data[name] = _parse_source(src_raw)
     else:
         template_sections = []
+        template_data = {}
 
     sections = []
     if "sections" in raw:
         sections = _parse_sections(raw["sections"])
+
+    data_sources = dict(template_data)
+    if "data" in raw:
+        for name, src_raw in raw["data"].items():
+            data_sources[name] = _parse_source(src_raw)
 
     all_sections = template_sections + sections
 
@@ -171,11 +188,18 @@ def load_config(
         if section.name:
             section.name = _substitute_vars(section.name, vars)
 
+    for source in data_sources.values():
+        _apply_vars_to_source(source, vars)
+
+    resolved_title = _substitute_vars(title, vars) if "{{" in title else title
+
     return ReportConfig(
-        title=_substitute_vars(title, vars) if "{{" in title else title,
+        title=resolved_title,
         author=author,
         date=report_date,
         sections=all_sections,
         vars=vars,
         template=template,
+        layout=layout,
+        data=data_sources if data_sources else None,
     )

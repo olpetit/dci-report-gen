@@ -89,30 +89,63 @@ def test_markdown_empty_data():
         os.unlink(path)
 
 
-def test_pdf_table():
-    from dci_report_gen.renderers.pdf import PDFRenderer
+def test_jinja_render():
+    from dci_report_gen.renderers.jinja import render_markdown
 
-    renderer = PDFRenderer()
-    renderer.begin("PDF Test", "Author", "2024-06-01")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpl_path = os.path.join(tmpdir, "test.md.j2")
+        with open(tmpl_path, "w") as f:
+            f.write(
+                "# {{ title }}\n\n"
+                "{% for job in jobs %}\n"
+                "- {{ job.name }} ({{ job.duration | duration }})\n"
+                "{% endfor %}\n"
+            )
 
-    data = [
-        {"id": "abc123", "status": "success"},
-        {"id": "def456", "status": "failure"},
-    ]
-    render = RenderConfig(
-        style="table",
-        columns=[
-            ColumnConfig(header="ID", field="id"),
-            ColumnConfig(header="Status", field="status"),
-        ],
-    )
-    renderer.add_section("Jobs", data, render)
+        result = render_markdown(
+            "test.md.j2",
+            [tmpdir],
+            {
+                "title": "Test",
+                "jobs": [
+                    {"name": "job1", "duration": 3661},
+                    {"name": "job2", "duration": 45},
+                ],
+            },
+        )
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-        path = f.name
+        assert "# Test" in result
+        assert "job1 (1h 1m 1s)" in result
+        assert "job2 (45s)" in result
 
-    try:
-        renderer.finish(path)
-        assert os.path.getsize(path) > 0
-    finally:
-        os.unlink(path)
+
+def test_jinja_pdf():
+    from dci_report_gen.renderers.jinja import render_markdown, markdown_to_pdf
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpl_path = os.path.join(tmpdir, "test.md.j2")
+        with open(tmpl_path, "w") as f:
+            f.write(
+                "# {{ title }}\n\n"
+                "| Name | Status |\n"
+                "| ---- | ------ |\n"
+                "{% for job in jobs %}\n"
+                "| {{ job.name }} | {{ job.status }} |\n"
+                "{% endfor %}\n"
+            )
+
+        md_text = render_markdown(
+            "test.md.j2",
+            [tmpdir],
+            {
+                "title": "PDF Test",
+                "jobs": [
+                    {"name": "job1", "status": "success"},
+                    {"name": "job2", "status": "failure"},
+                ],
+            },
+        )
+
+        pdf_path = os.path.join(tmpdir, "test.pdf")
+        markdown_to_pdf(md_text, pdf_path)
+        assert os.path.getsize(pdf_path) > 0

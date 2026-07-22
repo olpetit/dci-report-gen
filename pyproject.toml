@@ -5,7 +5,9 @@ description = "Report generation engine for DCI, Jira, and GitHub data"
 requires-python = ">=3.10"
 dependencies = [
     "PyYAML>=6.0",
-    "reportlab>=4.0",
+    "Jinja2>=3.1",
+    "weasyprint>=62.0",
+    "markdown>=3.5",
     "dciclient>=3.0",
     "jira>=3.5",
     "PyGithub>=2.0",

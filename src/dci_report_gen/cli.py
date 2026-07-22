@@ -63,7 +63,7 @@ def main():
         output = config.title.lower().replace(" ", "-") + ".pdf"
 
     engine = ReportEngine()
-    engine.generate(config, output)
+    engine.generate(config, output, config_path=args.config)
 
 
 if __name__ == "__main__":

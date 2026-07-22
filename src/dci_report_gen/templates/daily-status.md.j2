@@ -1,0 +1,12 @@
+# {{ title }}
+
+**Author:** {{ author }}
+**Date:** {{ date }}
+
+## Daily OCP Jobs (since {{ date_start }})
+
+| Name | Status | Date | Duration | Link |
+| ---- | ------ | ---- | -------- | ---- |
+{% for job in daily_jobs %}
+| {{ job.name }} | {{ job.status }} | {{ job.created_at | date }} | {{ job.duration | duration }} | [View](https://www.distributed-ci.io/jobs/{{ job.id }}) |
+{% endfor %}
