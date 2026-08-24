@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 
 from dciclient.v1.api import context as dci_context
@@ -16,12 +17,12 @@ def _get_context():
 def _extract_field(obj: dict, dotted_key: str):
     parts = dotted_key.split(".")
     current = obj
-    for part in parts:
+    for i, part in enumerate(parts):
         if current is None:
             return None
         if isinstance(current, list):
             return ", ".join(
-                str(_extract_field(item, ".".join([part] + parts[parts.index(part) + 1 :])))
+                str(_extract_field(item, ".".join(parts[i:])))
                 for item in current
                 if item is not None
             )
@@ -86,8 +87,6 @@ class DCIFetcher:
         return [_flatten_row(src, source.fields) for src in sources]
 
     def _download_files(self, ctx, jobs: list[dict], patterns: list[str] | None) -> None:
-        import re as _re
-
         for job in jobs:
             raw_files = job.get("files", [])
             enriched = []
@@ -96,7 +95,7 @@ class DCIFetcher:
                 file_name = f.get("name", "")
                 if not file_id:
                     continue
-                if patterns and not any(_re.search(p, file_name) for p in patterns):
+                if patterns and not any(re.search(p, file_name) for p in patterns):
                     continue
                 print(f"    Downloading {file_name}...", file=sys.stderr)
                 resp = dci_file.content(ctx, id=file_id)
