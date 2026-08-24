@@ -30,6 +30,9 @@ class SourceConfig:
     jql: str | None = None
     max_results: int = 50
     repo: str | None = None
+    include_results: bool = False
+    include_files: bool = False
+    file_patterns: list[str] | None = None
 
 
 @dataclass
@@ -55,6 +58,7 @@ class ReportConfig:
     template: TemplateRef | None = None
     layout: str | None = None
     data: dict[str, SourceConfig] | None = None
+    context: dict = field(default_factory=dict)
 
 
 def _substitute_vars(text: str, vars: dict[str, str]) -> str:
@@ -107,6 +111,9 @@ def _parse_source(raw: dict) -> SourceConfig:
         jql=raw.get("jql"),
         max_results=int(raw.get("max_results", 50)),
         repo=raw.get("repo"),
+        include_results=bool(raw.get("include_results", False)),
+        include_files=bool(raw.get("include_files", False)),
+        file_patterns=raw.get("file_patterns"),
     )
 
 
@@ -137,6 +144,8 @@ def load_config(
     vars = raw.get("vars", {})
     if var_overrides:
         vars.update(var_overrides)
+
+    context = raw.get("context", {})
 
     layout = report.get("layout")
 
@@ -202,4 +211,5 @@ def load_config(
         template=template,
         layout=layout,
         data=data_sources if data_sources else None,
+        context=context,
     )

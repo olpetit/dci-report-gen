@@ -1,0 +1,251 @@
+# Weekly Testing Summary
+
+> **Reporting period:** {{ date_start }} — {{ date_end }}
+{% if report_prepared_for is defined %}
+> **Prepared for:** {{ report_prepared_for }}
+{% endif %}
+> **Report date:** {{ date }}
+
+---
+
+{% macro dci_job_link(job, tab="tests") -%}
+[{{ job.id | short_id }}](https://www.distributed-ci.io/jobs/{{ job.id }}/{{ tab }})
+{%- endmacro %}
+
+{% macro gh_run_link(job) -%}
+{{ job.tags | github_run_link(github_repo) }}
+{%- endmacro %}
+
+{% macro ocp_version(job) -%}
+{% if job.components is mapping -%}
+{{ job.components.version | default('—', true) }}
+{%- elif job.components is iterable and job.components is not string -%}
+{% for comp in job.components if comp.type == 'ocp' -%}
+{{ comp.version }}
+{%- endfor %}
+{%- else -%}
+—
+{%- endif %}
+{%- endmacro %}
+
+{% macro site_label(job) -%}
+{{ job.configuration | default('—', true) }}
+{%- endmacro %}
+
+{% macro hw_desc(site) -%}
+{{ site_hardware[site] | default('—') if site_hardware is defined else '—' }}
+{%- endmacro %}
+
+{% macro status_counts(jobs) -%}
+{% set ns = namespace(passed=0, failed=0, running=0) -%}
+{% for job in jobs -%}
+{% if job.status == 'success' %}{% set ns.passed = ns.passed + 1 -%}
+{% elif job.status in ['failure', 'error', 'killed'] %}{% set ns.failed = ns.failed + 1 -%}
+{% else %}{% set ns.running = ns.running + 1 -%}
+{% endif -%}
+{% endfor -%}
+{% set parts = [] -%}
+{% if ns.passed %}{% set _ = parts.append('✅ ' ~ ns.passed) %}{% endif -%}
+{% if ns.failed %}{% set _ = parts.append('❌ ' ~ ns.failed) %}{% endif -%}
+{% if ns.running %}{% set _ = parts.append('🔄 ' ~ ns.running) %}{% endif -%}
+{{ parts | join(' \\| ') if parts else '— No runs' }}
+{%- endmacro %}
+
+## Results at a glance
+
+| Area | Version | Site | Hardware | Status |
+|------|---------|------|----------|--------|
+{% for job in ibi_jobs %}
+| IBI | {{ ocp_version(job) }} | {{ site_label(job) }} | {{ hw_desc(job.configuration) }} | {{ job.status | status_emoji }} {{ job.status | title }} |
+{% endfor %}
+{% for job in ibu_jobs %}
+| IBU | {{ ocp_version(job) }} | {{ site_label(job) }} | {{ hw_desc(job.configuration) }} | {{ job.status | status_emoji }} {{ job.status | title }} |
+{% endfor %}
+{% for site, jobs in latency_jobs | groupby('configuration') %}
+| Long Latency | {{ ocp_version(jobs[0]) }} | {{ site }} | {{ hw_desc(site) }} | {{ status_counts(jobs) }} |
+{% endfor %}
+{% for site, jobs in slcm_jobs | groupby('configuration') %}
+| Weekly CaaS SLCM | {{ ocp_version(jobs[0]) }} | {{ site }} | {{ hw_desc(site) }} | {{ status_counts(jobs) }} |
+{% endfor %}
+{% for site, jobs in eavs_jobs | groupby('configuration') %}
+| Weekly CaaS EAVS | {{ ocp_version(jobs[0]) }} | {{ site }} | {{ hw_desc(site) }} | {{ status_counts(jobs) }} |
+{% endfor %}
+
+---
+
+## IBI / IBU
+
+{% for job in ibi_jobs %}
+### IBI: {{ ocp_version(job) }} — {{ site_label(job) }} ({{ hw_desc(job.configuration) }})
+
+{{ job.status | status_emoji }} IBI pipeline {{ 'completed successfully' if job.status == 'success' else job.status }}.
+
+{% set timing_content = job.files | find_file('ibi_cluster_timing') %}
+{% set deploy_dur = timing_content | regex_extract('Deployment Duration\\s*:\\s*(.+)') if timing_content else None %}
+{% set policy_dur = timing_content | regex_extract('Policy Reconciliation Duration\\s*:\\s*(.+)') if timing_content else None %}
+| Date | Deployment Duration | Policy Reconciliation | DCI |
+|------|--------------------|-----------------------|-----|
+| {{ job.created_at | date }} | {{ deploy_dur | default('—', true) }} | {{ policy_dur | default('—', true) }} | {{ dci_job_link(job, 'files') }} |
+
+{% endfor %}
+{% for job in ibu_jobs %}
+### IBU: {{ ocp_version(job) }} — {{ site_label(job) }} ({{ hw_desc(job.configuration) }})
+
+{% set ibu_timing = job.files | find_file('ibu_upgrade_timing') %}
+{% set ibu_reboot = ibu_timing | regex_extract('Reboot\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+{% set ibu_total = ibu_timing | regex_extract('Total Orchestrated\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+{% set ibu_total_tests = ibu_timing | regex_extract('Total \\+ Tests\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+{% set ibu_total_secs = ibu_timing | regex_extract('Total Orchestrated.*\\((\\d+)s\\)') if ibu_timing else None %}
+{% if job.status == 'success' %}
+{{ job.status | status_emoji }} Upgrade completed in {{ ibu_total | default(job.duration | duration) }}.
+{% else %}
+{{ job.status | status_emoji }} Upgrade {{ job.status }}.
+{% endif %}
+
+{% set ibu_yaml_content = job.files | find_file('ibu_cloudransno') %}
+{% set target_version = ibu_yaml_content | yaml_path('spec.seedImageRef.version') if ibu_yaml_content else None %}
+{% if target_version %}
+Target version: {{ target_version }}
+{% endif %}
+
+| Date | Reboot | Total IBU | IBU + Validations | DCI |
+|------|--------|-----------|-------------------|-----|
+| {{ job.created_at | date }} | {{ ibu_reboot | default('—', true) }} | {{ ibu_total | default('—', true) }} | {{ ibu_total_tests | default('—', true) }} | {{ dci_job_link(job) }} |
+
+{% set ibu_talm = ibu_timing | regex_extract('TALM Overhead\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+{% set ibu_prepivot = ibu_timing | regex_extract('PrePivot\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+{% set ibu_postpivot = ibu_timing | regex_extract('PostPivot\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+{% set ibu_policy = ibu_timing | regex_extract('Policy Reconciliation\\s*:\\s*(\\d+m\\s+\\d+s)') if ibu_timing else None %}
+<details>
+<summary>Full timing breakdown</summary>
+
+| Phase | Duration |
+|-------|----------|
+| TALM Overhead | {{ ibu_talm | default('—', true) }} |
+| PrePivot | {{ ibu_prepivot | default('—', true) }} |
+| Reboot | {{ ibu_reboot | default('—', true) }} |
+| PostPivot | {{ ibu_postpivot | default('—', true) }} |
+| Policy Reconciliation | {{ ibu_policy | default('—', true) }} |
+
+</details>
+
+{% endfor %}
+
+---
+
+## Long Latency Platform Tests
+
+{% for site, jobs in latency_jobs | groupby('configuration') %}
+{% set job = jobs | selectattr('status', 'equalto', 'success') | first | default(jobs[0]) %}
+### {{ site }} — {{ hw_desc(site) }} — {{ ocp_version(job) }} — Duration: ~{{ (job.duration / 3600) | round | int }}h
+
+{% set mc_content = job.files | find_file('microcode_') %}
+{% set microcode = mc_content | regex_extract('microcode\\s*:\\s*(\\S+)') if mc_content else None %}
+{% if microcode %}
+Microcode: `{{ microcode }}`
+{% endif %}
+{% if site_firmware is defined and site in site_firmware %}
+{% set fw = site_firmware[site] %}
+{{ fw.mgmt_label | default('iDRAC') }}: `{{ fw.mgmt_version | default('—', true) }}` | BIOS: `{{ fw.bios | default('—', true) }}`
+{% endif %}
+
+{% set hwlat_tc = job.tests | find_testcase('hwlatdetect') %}
+{% set cyclic_tc = job.tests | find_testcase('cyclictest') %}
+{% set oslat_tc = job.tests | find_testcase('oslat') %}
+| Test | Result | Max Measured | Threshold | Verdict |
+|------|--------|-------------|-----------|---------|
+{% for tc_name, tc in [('hwlatdetect', hwlat_tc), ('cyclictest', cyclic_tc), ('oslat', oslat_tc)] %}
+{% if tc %}
+| {{ tc_name }} | {{ tc.action | status_emoji }} {{ tc.action | default('—') | title }} | {{ tc.message | default('—', true) }} | 20us | — |
+{% else %}
+| {{ tc_name }} | — | — | — | — |
+{% endif %}
+{% endfor %}
+
+Pipeline: {{ gh_run_link(job) }}
+
+DCI: {{ dci_job_link(job) }}
+
+{% for other_job in jobs if other_job.id != job.id and other_job.status in ['new', 'pre-run', 'running', 'post-run'] %}
+> 🔄 A new latency run ({{ gh_run_link(other_job) }}, OCP {{ ocp_version(other_job) }}) started on {{ other_job.created_at | date }} and is still in progress.
+
+{% endfor %}
+{% endfor %}
+
+---
+
+## Weekly CaaS SLCM
+
+{% for site, jobs in slcm_jobs | groupby('configuration') %}
+### {{ ocp_version(jobs[0]) }} — {{ site }} ({{ hw_desc(site) }})
+
+Pipeline: {{ gh_run_link(jobs[0]) }} | Started: {{ jobs[0].created_at | date }}
+
+| Job | Status | DCI |
+|-----|--------|-----|
+{% for job in jobs %}
+| {{ job.name }} | {{ job.status | status_emoji }} {{ job.status | title }} | {{ dci_job_link(job) }} |
+{% endfor %}
+
+{% set failures = jobs | selectattr('status', 'in', ['failure', 'error']) | list %}
+{% if failures %}
+<details>
+<summary>Failures ({{ failures | length }})</summary>
+
+{% for job in failures %}
+- `{{ job.name }}`
+{% endfor %}
+
+</details>
+{% endif %}
+
+{% endfor %}
+
+---
+
+## Weekly CaaS EAVS
+
+{% for site, jobs in eavs_jobs | groupby('configuration') %}
+### {{ ocp_version(jobs[0]) }} — {{ site }} ({{ hw_desc(site) }})
+
+| Test | Result | DCI |
+|------|--------|-----|
+{% for job in jobs %}
+{% for test_file in job.tests | default([]) %}
+{% for suite in test_file.testsuites | default([]) %}
+{% for tc in suite.testcases | default([]) if tc.action != 'skipped' %}
+| {{ tc.name }} | {{ tc.action | status_emoji }} {{ tc.action | title }} | {{ dci_job_link(job) }} |
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+
+Pipeline: {{ gh_run_link(jobs[0]) }}
+
+{% set ns = namespace(failures=[]) %}
+{% for job in jobs %}
+{% for test_file in job.tests | default([]) %}
+{% for suite in test_file.testsuites | default([]) %}
+{% for tc in suite.testcases | default([]) if tc.action in ['failure', 'error'] %}
+{% set _ = ns.failures.append(tc) %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% if ns.failures %}
+<details>
+<summary>Failures ({{ ns.failures | length }})</summary>
+
+{% for tc in ns.failures %}
+- `{{ tc.name }}`{% if tc.message %} — {{ tc.message }}{% endif %}
+
+{% endfor %}
+
+</details>
+{% endif %}
+
+{% endfor %}
+
+---
+
+*Generated by dci-report-gen on {{ date }}.*

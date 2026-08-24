@@ -1,0 +1,28 @@
+report:
+  title: "Test Report with Results"
+  author: "Test Author"
+  date: "2024-06-01"
+  layout: test.md.j2
+
+vars:
+  date_start: "2024-06-01"
+
+context:
+  site_hardware:
+    site5: "HPE DL110"
+    site10: "Dell SPR-EE"
+
+data:
+  jobs:
+    type: dci
+    query: "((tags in ['daily']) and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status"]
+    limit: 10
+    include_results: true
+  jobs_with_files:
+    type: dci
+    query: "((tags in ['ibi']) and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status", "files.id", "files.name"]
+    limit: 10
+    include_files: true
+    file_patterns: ["ibi_cluster_timing", "microcode_"]

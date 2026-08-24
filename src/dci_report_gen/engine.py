@@ -56,6 +56,7 @@ class ReportEngine:
             "author": config.author or "",
             "date": config.date,
             **config.vars,
+            **config.context,
             **fetched,
         }
 

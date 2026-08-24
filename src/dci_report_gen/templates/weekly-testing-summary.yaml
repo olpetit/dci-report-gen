@@ -1,0 +1,61 @@
+description: "Weekly testing summary report for SLCM/RAN CI testing"
+
+params:
+  date_start:
+    required: true
+  date_end:
+    required: true
+  github_repo:
+    default: "rh-telco-labs/blue-slcm-ran-tests"
+
+report:
+  title: "Weekly Testing Summary"
+  date: auto
+  layout: weekly-testing-summary.md.j2
+
+data:
+  ibi_jobs:
+    type: dci
+    query: "((name='op-deploy-cloudran-site-ibi') and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status", "created_at", "duration", "remoteci", "components", "tags", "configuration", "files.id", "files.name"]
+    include_results: true
+    include_files: true
+    file_patterns: ["ibi_cluster_timing"]
+    limit: 20
+    sort: "-created_at"
+
+  ibu_jobs:
+    type: dci
+    query: "(((tags in ['ibu']) and (tags in ['stage:upgrade'])) and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status", "created_at", "duration", "remoteci", "components", "tags", "configuration", "files.id", "files.name"]
+    include_results: true
+    include_files: true
+    file_patterns: ["ibu_upgrade_timing", "^ibu_cloudransno.*\\.yaml$"]
+    limit: 20
+    sort: "-created_at"
+
+  latency_jobs:
+    type: dci
+    query: "((tags in ['latency']) and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status", "created_at", "duration", "remoteci", "components", "tags", "configuration", "files.id", "files.name"]
+    include_results: true
+    include_files: true
+    file_patterns: ["microcode_"]
+    limit: 20
+    sort: "-created_at"
+
+  slcm_jobs:
+    type: dci
+    query: "(((tags in ['weekly-caas-slcm']) and (components.type='ocp')) and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status", "created_at", "duration", "remoteci", "components", "tags", "configuration"]
+    include_results: true
+    limit: 50
+    sort: "-created_at"
+
+  eavs_jobs:
+    type: dci
+    query: "(((tags in ['weekly-caas-eavs']) and (components.type='ocp')) and (created_at>='{{date_start}}'))"
+    fields: ["id", "name", "status", "created_at", "duration", "remoteci", "components", "tags", "configuration"]
+    include_results: true
+    limit: 50
+    sort: "-created_at"

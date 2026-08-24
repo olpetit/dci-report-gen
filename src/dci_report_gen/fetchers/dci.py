@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sys
+
 from dciclient.v1.api import context as dci_context
+from dciclient.v1.api import file as dci_file
 from dciclient.v1.api import job as dci_job
 
 from dci_report_gen.config import SourceConfig
@@ -44,9 +47,19 @@ class DCIFetcher:
         return []
 
     def _search_jobs(self, ctx, source: SourceConfig) -> list[dict]:
+        fields = list(source.fields) if source.fields else None
+        if source.include_results and fields:
+            for f in ("tests", "results", "id"):
+                if f not in fields:
+                    fields.append(f)
+        if source.include_files and fields:
+            for f in ("files.id", "files.name", "id"):
+                if f not in fields:
+                    fields.append(f)
+
         params = {"query": source.query, "limit": source.limit, "sort": source.sort}
-        if source.fields:
-            params["fields"] = ",".join(source.fields)
+        if fields:
+            params["fields"] = ",".join(fields)
         if source.aggs:
             import json
 
@@ -65,7 +78,37 @@ class DCIFetcher:
         hits = hits_obj.get("hits", []) if isinstance(hits_obj, dict) else hits_obj
         sources = [hit.get("_source", hit) for hit in hits]
 
+        if source.include_results or source.include_files:
+            if source.include_files:
+                self._download_files(ctx, sources, source.file_patterns)
+            return sources
+
         return [_flatten_row(src, source.fields) for src in sources]
+
+    def _download_files(self, ctx, jobs: list[dict], patterns: list[str] | None) -> None:
+        import re as _re
+
+        for job in jobs:
+            raw_files = job.get("files", [])
+            enriched = []
+            for f in raw_files:
+                file_id = f.get("id")
+                file_name = f.get("name", "")
+                if not file_id:
+                    continue
+                if patterns and not any(_re.search(p, file_name) for p in patterns):
+                    continue
+                print(f"    Downloading {file_name}...", file=sys.stderr)
+                resp = dci_file.content(ctx, id=file_id)
+                if resp.status_code == 200:
+                    try:
+                        content = resp.content.decode("utf-8")
+                    except UnicodeDecodeError:
+                        content = ""
+                else:
+                    content = ""
+                enriched.append({"name": file_name, "id": file_id, "content": content})
+            job["files"] = enriched
 
     def _flatten_aggs(self, aggs: dict) -> list[dict]:
         rows = []

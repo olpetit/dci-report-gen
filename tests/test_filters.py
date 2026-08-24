@@ -1,0 +1,186 @@
+from dci_report_gen.renderers.jinja import (
+    _filter_dci_link,
+    _filter_find_file,
+    _filter_find_testcase,
+    _filter_github_run_link,
+    _filter_human_duration,
+    _filter_regex_extract,
+    _filter_short_id,
+    _filter_status_emoji,
+    _filter_yaml_path,
+)
+
+
+def test_status_emoji_success():
+    assert _filter_status_emoji("success") == "✅"
+
+
+def test_status_emoji_failure():
+    assert _filter_status_emoji("failure") == "❌"
+
+
+def test_status_emoji_running():
+    assert _filter_status_emoji("running") == "\U0001f504"
+
+
+def test_status_emoji_unknown():
+    assert _filter_status_emoji("unknown") == "unknown"
+
+
+def test_dci_link():
+    job_id = "255fb46f-ae28-419a-a3ae-7cefbd505087"
+    result = _filter_dci_link(job_id)
+    assert "[255fb46f]" in result
+    assert job_id in result
+    assert "/tests)" in result
+
+
+def test_dci_link_custom_tab():
+    job_id = "255fb46f-ae28-419a-a3ae-7cefbd505087"
+    result = _filter_dci_link(job_id, tab="files")
+    assert "/files)" in result
+
+
+def test_dci_link_empty():
+    assert _filter_dci_link("") == ""
+    assert _filter_dci_link(None) == ""
+
+
+def test_short_id():
+    assert _filter_short_id("255fb46f-ae28-419a") == "255fb46f"
+    assert _filter_short_id("ab") == "ab"
+    assert _filter_short_id("") == ""
+    assert _filter_short_id(None) == ""
+
+
+def test_human_duration_short():
+    assert _filter_human_duration(701) == "11m 41s"
+    assert _filter_human_duration(87) == "1m 27s"
+    assert _filter_human_duration(0) == "0m 00s"
+
+
+def test_human_duration_long():
+    assert _filter_human_duration(701, style="long") == "11 minutes and 41 seconds"
+
+
+def test_human_duration_invalid():
+    assert _filter_human_duration("not_a_number") == "not_a_number"
+
+
+def test_find_testcase():
+    results = [
+        {
+            "testsuites": [
+                {
+                    "testcases": [
+                        {"name": "deployment_duration", "time": 701},
+                        {"name": "policy_reconciliation", "time": 88},
+                    ]
+                }
+            ]
+        }
+    ]
+    tc = _filter_find_testcase(results, "deployment")
+    assert tc is not None
+    assert tc["time"] == 701
+
+    tc2 = _filter_find_testcase(results, "policy")
+    assert tc2["time"] == 88
+
+
+def test_find_testcase_not_found():
+    results = [{"testsuites": [{"testcases": [{"name": "foo"}]}]}]
+    assert _filter_find_testcase(results, "bar") is None
+
+
+def test_find_testcase_empty():
+    assert _filter_find_testcase([], "foo") is None
+    assert _filter_find_testcase(None, "foo") is None
+
+
+def test_github_run_link():
+    tags = ["daily", "github-29286800312"]
+    result = _filter_github_run_link(tags, "rh-telco-labs/blue-slcm-ran-tests")
+    assert "29286800312" in result
+    assert "actions/runs/29286800312" in result
+    assert "[github-29286800312]" in result
+
+
+def test_github_run_link_no_github_tag():
+    tags = ["daily", "ocp"]
+    assert _filter_github_run_link(tags, "owner/repo") == ""
+
+
+def test_github_run_link_empty():
+    assert _filter_github_run_link([], "owner/repo") == ""
+    assert _filter_github_run_link(None, "owner/repo") == ""
+
+
+# --- find_file ---
+
+
+def test_find_file_match():
+    files = [
+        {"name": "ansible.log", "content": "log data"},
+        {"name": "ibi_cluster_timing_site5.txt", "content": "Deployment Duration : 13m"},
+    ]
+    assert _filter_find_file(files, "ibi_cluster_timing") == "Deployment Duration : 13m"
+
+
+def test_find_file_no_match():
+    files = [{"name": "ansible.log", "content": "log data"}]
+    assert _filter_find_file(files, "timing") is None
+
+
+def test_find_file_empty():
+    assert _filter_find_file([], "pattern") is None
+    assert _filter_find_file(None, "pattern") is None
+
+
+# --- regex_extract ---
+
+
+def test_regex_extract_match():
+    text = "Deployment Duration : 13 minutes and 42 seconds"
+    assert _filter_regex_extract(text, r"Deployment Duration\s*:\s*(.+)") == "13 minutes and 42 seconds"
+
+
+def test_regex_extract_with_seconds():
+    text = "Reboot : 7m 38s (458s)"
+    assert _filter_regex_extract(text, r"Reboot\s*:\s*(\S+\s+\S+)") == "7m 38s"
+
+
+def test_regex_extract_no_match():
+    assert _filter_regex_extract("some text", r"missing:\s*(.+)") is None
+
+
+def test_regex_extract_empty():
+    assert _filter_regex_extract(None, r"(.+)") is None
+    assert _filter_regex_extract("", r"(.+)") is None
+
+
+# --- yaml_path ---
+
+
+def test_yaml_path_nested():
+    text = "spec:\n  seedImageRef:\n    version: '4.20.16'\n"
+    assert _filter_yaml_path(text, "spec.seedImageRef.version") == "4.20.16"
+
+
+def test_yaml_path_simple():
+    text = "name: test\nstatus: success\n"
+    assert _filter_yaml_path(text, "status") == "success"
+
+
+def test_yaml_path_missing():
+    text = "name: test\n"
+    assert _filter_yaml_path(text, "spec.version") is None
+
+
+def test_yaml_path_empty():
+    assert _filter_yaml_path(None, "key") is None
+    assert _filter_yaml_path("", "key") is None
+
+
+def test_yaml_path_invalid_yaml():
+    assert _filter_yaml_path("{{invalid", "key") is None

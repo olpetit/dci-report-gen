@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import markdown as md
+import yaml
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
 
@@ -23,6 +25,15 @@ def _build_env(search_paths: list[str | Path]) -> Environment:
     env.filters["date"] = _filter_date
     env.filters["jira_link"] = _filter_jira_link
     env.filters["github_link"] = _filter_github_link
+    env.filters["status_emoji"] = _filter_status_emoji
+    env.filters["dci_link"] = _filter_dci_link
+    env.filters["short_id"] = _filter_short_id
+    env.filters["human_duration"] = _filter_human_duration
+    env.filters["find_testcase"] = _filter_find_testcase
+    env.filters["github_run_link"] = _filter_github_run_link
+    env.filters["find_file"] = _filter_find_file
+    env.filters["regex_extract"] = _filter_regex_extract
+    env.filters["yaml_path"] = _filter_yaml_path
     return env
 
 
@@ -50,6 +61,104 @@ def _filter_github_link(number, repo=""):
     if repo:
         return f"[#{number}](https://github.com/{repo}/pull/{number})"
     return f"#{number}"
+
+
+_STATUS_EMOJI = {
+    "success": "✅",
+    "failure": "❌",
+    "error": "❌",
+    "killed": "❌",
+    "running": "\U0001f504",
+    "new": "\U0001f504",
+    "pre-run": "\U0001f504",
+    "post-run": "\U0001f504",
+    "pass": "✅",
+    "Pass": "✅",
+    "Fail": "❌",
+}
+
+
+def _filter_status_emoji(value):
+    return _STATUS_EMOJI.get(str(value), str(value))
+
+
+def _filter_dci_link(job_id, tab="tests"):
+    if not job_id:
+        return ""
+    short = str(job_id)[:8]
+    return f"[{short}](https://www.distributed-ci.io/jobs/{job_id}/{tab})"
+
+
+def _filter_short_id(value, length=8):
+    if not value:
+        return ""
+    return str(value)[:length]
+
+
+def _filter_human_duration(seconds, style="short"):
+    try:
+        s = int(float(seconds))
+    except (ValueError, TypeError):
+        return str(seconds)
+    m, sec = divmod(s, 60)
+    if style == "long":
+        return f"{m} minutes and {sec} seconds"
+    return f"{m}m {sec:02d}s"
+
+
+def _filter_find_testcase(tests, name):
+    if not tests:
+        return None
+    for test in tests:
+        for suite in test.get("testsuites", []):
+            for tc in suite.get("testcases", []):
+                if name in tc.get("name", ""):
+                    return tc
+    return None
+
+
+def _filter_github_run_link(tags, repo):
+    if not tags or not repo:
+        return ""
+    for tag in tags:
+        tag_str = str(tag)
+        if tag_str.startswith("github-"):
+            run_id = tag_str[len("github-"):]
+            return f"[{tag_str}](https://github.com/{repo}/actions/runs/{run_id})"
+    return ""
+
+
+def _filter_find_file(files, pattern):
+    if not files:
+        return None
+    for f in files:
+        if re.search(pattern, f.get("name", "")):
+            return f.get("content")
+    return None
+
+
+def _filter_regex_extract(text, pattern):
+    if not text:
+        return None
+    m = re.search(pattern, str(text))
+    if m and m.groups():
+        return m.group(1).strip()
+    return None
+
+
+def _filter_yaml_path(text, dotted_path):
+    if not text:
+        return None
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    for key in dotted_path.split("."):
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return None
+    return data
 
 
 def render_markdown(
