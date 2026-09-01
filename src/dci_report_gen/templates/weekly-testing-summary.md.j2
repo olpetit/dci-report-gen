@@ -129,7 +129,7 @@ Target version: {{ target_version }}
 
 {% for site, jobs in latency_jobs | groupby('configuration') %}
 {% set job = jobs | selectattr('status', 'equalto', 'success') | first | default(jobs[0]) %}
-### {{ site }} — {{ hw_desc(site) }} — {{ ocp_version(job) }} — Duration: ~{{ (job.duration / 3600) | round | int if job.duration else '—' }}h
+### {{ site }} — {{ hw_desc(site) }} — {{ ocp_version(job) }} — Duration: {{ '~' ~ ((job.duration / 3600) | round | int) ~ 'h' if job.duration else '—' }}
 
 {% set mc_content = job.files | find_file('microcode_') %}
 {% set microcode = mc_content | regex_extract('microcode\\s*:\\s*(\\S+)') if mc_content else None %}
