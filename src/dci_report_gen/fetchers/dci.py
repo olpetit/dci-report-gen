@@ -49,11 +49,15 @@ class DCIFetcher:
 
     def _search_jobs(self, ctx, source: SourceConfig) -> list[dict]:
         fields = list(source.fields) if source.fields else None
-        if source.include_results and fields:
+        if source.include_results:
+            if fields is None:
+                fields = []
             for f in ("tests", "results", "id"):
                 if f not in fields:
                     fields.append(f)
-        if source.include_files and fields:
+        if source.include_files:
+            if fields is None:
+                fields = []
             for f in ("files.id", "files.name", "id"):
                 if f not in fields:
                     fields.append(f)
