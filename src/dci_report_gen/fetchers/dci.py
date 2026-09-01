@@ -109,6 +109,10 @@ class DCIFetcher:
                     except UnicodeDecodeError:
                         content = ""
                 else:
+                    print(
+                        f"    Warning: failed to download {file_name} ({resp.status_code})",
+                        file=sys.stderr,
+                    )
                     content = ""
                 enriched.append({"name": file_name, "id": file_id, "content": content})
             job["files"] = enriched

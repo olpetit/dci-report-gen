@@ -72,9 +72,6 @@ _STATUS_EMOJI = {
     "new": "\U0001f504",
     "pre-run": "\U0001f504",
     "post-run": "\U0001f504",
-    "pass": "✅",
-    "Pass": "✅",
-    "Fail": "❌",
 }
 
 
@@ -153,8 +150,9 @@ def _filter_regex_extract(text, pattern):
     if not text:
         return None
     m = re.search(pattern, str(text))
-    if m and m.groups():
-        return m.group(1).strip()
+    if m:
+        g = m.group(1)
+        return g.strip() if g is not None else None
     return None
 
 
